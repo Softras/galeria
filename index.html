@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Galeria de Fotos & Downloader</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- JSZip for ZIP Downloads -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <!-- Alpine.js -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        
+        /* Smooth aspect ratio image crop */
+        .uniform-img {
+            object-fit: cover;
+            width: 100%;
+            height: 100%;
+        }
+        
+        /* Custom scrollbars */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(0,0,0,0.05);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(100,100,100,0.3);
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(100,100,100,0.5);
+        }
+    </style>
+</head>
+<body x-data="galleryApp()" :class="{ 'dark bg-slate-950 text-slate-100': darkMode, 'bg-slate-50 text-slate-800': !darkMode }" class="min-h-screen font-sans transition-colors duration-200">
+
+    <!-- Header Banner / Deploy Banner -->
+    <header class="border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 sticky top-0 z-30 shadow-sm">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex flex-wrap items-center justify-between gap-4">
+            
+            <!-- Logo & Title -->
+            <div class="flex items-center space-x-3">
+                <div class="p-2 bg-brand-600 text-white rounded-xl shadow-md">
+                    <i data-lucide="images" class="w-6 h-6"></i>
+                </div>
+                <div>
+                    <h1 class="text-lg font-bold tracking-tight leading-none">Photo Vault</h1>
+                    <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">Galeria & Download em Lote</p>
+                </div>
+            </div>
+
+            <!-- Header Quick Actions -->
+            <div class="flex items-center space-x-2 sm:space-x-3">
+                
+                <!-- Help / Deploy Instructions Trigger -->
+                <button @click="showDeployModal = true" class="px-3 py-1.5 text-xs sm:text-sm font-medium text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition flex items-center gap-1.5">
+                    <i data-lucide="help-circle" class="w-4 h-4"></i>
+                    <span>Como Fazer Deploy?</span>
+                </button>
+
+                <!-- Dark Mode Toggle -->
+                <button @click="darkMode = !darkMode" class="p-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition" title="Alternar Tema">
+                    <i x-show="!darkMode" data-lucide="moon" class="w-5 h-5"></i>
+                    <i x-show="darkMode" data-lucide="sun" class="w-5 h-5"></i>
+                </button>
+
+                <!-- Bulk Download Button -->
+                <button @click="downloadAllAsZip()" :disabled="filteredImages.length === 0 || isZipping" class="px-4 py-2 text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 disabled:bg-slate-400 disabled:cursor-not-allowed rounded-lg shadow-sm hover:shadow transition flex items-center gap-2">
+                    <i x-show="!isZipping" data-lucide="download-cloud" class="w-4 h-4"></i>
+                    <i x-show="isZipping" data-lucide="loader-2" class="w-4 h-4 animate-spin"></i>
+                    <span x-text="isZipping ? 'Compactando...' : 'Baixar Todas (ZIP)'"></span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content Container -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+
+        <!-- Upload & Filter Control Section -->
+        <div class="bg-white dark:bg-slate-900 rounded-2xl p-5 shadow-sm border border-slate-200 dark:border-slate-800 space-y-4">
+            
+            <!-- Upload & Drag-and-Drop Area -->
+            <div 
+                @dragover.prevent="isDragging = true"
+                @dragleave.prevent="isDragging = false"
+                @drop.prevent="handleFolderDrop($event)"
+                :class="{ 'border-brand-500 bg-brand-50/50 dark:bg-brand-950/20': isDragging, 'border-slate-300 dark:border-slate-700': !isDragging }"
+                class="border-2 border-dashed rounded-xl p-6 text-center transition cursor-pointer relative hover:border-brand-500 group"
+            >
+                <input type="file" id="fileInput" multiple accept="image/*" class="hidden" @change="handleFileUpload($event)">
+                <input type="file" id="folderInput" webkitdirectory directory multiple class="hidden" @change="handleFileUpload($event)">
+
+                <div class="flex flex-col items-center justify-center space-y-2">
+                    <div class="p-3 bg-brand-50 dark:bg-slate-800 text-brand-600 dark:text-brand-500 rounded-full group-hover:scale-110 transition duration-200">
+                        <i data-lucide="folder-up" class="w-8 h-8"></i>
+                    </div>
+                    <div>
+                        <p class="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                            Arraste e solte arquivos/pastas aqui, ou selecione do seu computador
+                        </p>
+                        <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                            Formatos suportados: JPG, PNG, WEBP, GIF, SVG
+                        </p>
+                    </div>
+
+                    <div class="flex flex-wrap justify-center gap-3 pt-2">
+                        <button @click="document.getElementById('fileInput').click()" class="px-3.5 py-1.5 text-xs font-medium text-brand-600 dark:text-brand-400 bg-brand-50 dark:bg-brand-950/50 hover:bg-brand-100 dark:hover:bg-brand-900/50 rounded-md transition border border-brand-200 dark:border-brand-800">
+                            Selecionar Arquivos
+                        </button>
+                        <button @click="document.getElementById('folderInput').click()" class="px-3.5 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-md transition border border-slate-200 dark:border-slate-700">
+                            Carregar Pasta Inteira
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Toolbar Controls (Search, Grid Density, Aspect Ratio, Stats) -->
+            <div class="flex flex-col md:flex-row items-center justify-between gap-4 pt-2 border-t border-slate-100 dark:border-slate-800">
+                
+                <!-- Search Input -->
+                <div class="relative w-full md:w-80">
+                    <i data-lucide="search" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
+                    <input 
+                        type="text" 
+                        x-model="searchQuery" 
+                        placeholder="Buscar por nome da imagem..." 
+                        class="w-full pl-9 pr-8 py-2 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 text-slate-800 dark:text-slate-200"
+                    >
+                    <button x-show="searchQuery" @click="searchQuery = ''" class="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                        <i data-lucide="x" class="w-4 h-4"></i>
+                    </button>
+                </div>
+
+                <!-- Gallery Display Controls -->
+                <div class="flex flex-wrap items-center justify-between md:justify-end w-full md:w-auto gap-4">
+                    
+                    <!-- Aspect Ratio Selector -->
+                    <div class="flex items-center space-x-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-lg">
+                        <button @click="aspectRatio = 'square'" :class="{ 'bg-white dark:bg-slate-700 text-brand-600 dark:text-brand-400 shadow-sm': aspectRatio === 'square', 'text-slate-500 hover:text-slate-700 dark:text-slate-400': aspectRatio !== 'square' }" class="px-2.5 py-1 text-xs font-medium rounded-md transition" title="Proporção 1:1">
+                            1:1 Quadrado
+                        </button>
+                        <button @click="aspectRatio = 'landscape'" :class="{ 'bg-white dark:bg-slate-700 text-brand-600 dark:text-brand-400 shadow-sm': aspectRatio === 'landscape', 'text-slate-500 hover:text-slate-700 dark:text-slate-400': aspectRatio !== 'landscape' }" class="px-2.5 py-1 text-xs font-medium rounded-md transition" title="Proporção 4:3">
+                            4:3 Paisagem
+                        </button>
+                        <button @click="aspectRatio = 'portrait'" :class="{ 'bg-white dark:bg-slate-700 text-brand-600 dark:text-brand-400 shadow-sm': aspectRatio === 'portrait', 'text-slate-500 hover:text-slate-700 dark:text-slate-400': aspectRatio !== 'portrait' }" class="px-2.5 py-1 text-xs font-medium rounded-md transition" title="Proporção 3:4">
+                            3:4 Retrato
+                        </button>
+                    </div>
+
+                    <!-- Grid Columns Density -->
+                    <div class="flex items-center space-x-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-lg">
+                        <button @click="gridCols = 'compact'" :class="{ 'bg-white dark:bg-slate-700 text-brand-600 dark:text-brand-400 shadow-sm': gridCols === 'compact', 'text-slate-500 hover:text-slate-700 dark:text-slate-400': gridCols !== 'compact' }" class="p-1.5 rounded-md transition" title="Grade Densa">
+                            <i data-lucide="layout-grid" class="w-4 h-4"></i>
+                        </button>
+                        <button @click="gridCols = 'comfortable'" :class="{ 'bg-white dark:bg-slate-700 text-brand-600 dark:text-brand-400 shadow-sm': gridCols === 'comfortable', 'text-slate-500 hover:text-slate-700 dark:text-slate-400': gridCols !== 'comfortable' }" class="p-1.5 rounded-md transition" title="Grade Média">
+                            <i data-lucide="grid-3x3" class="w-4 h-4"></i>
+                        </button>
+                    </div>
+
+                    <!-- Counter -->
+                    <div class="text-xs text-slate-500 dark:text-slate-400 font-medium whitespace-nowrap">
+                        Mostrando <span x-text="filteredImages.length" class="font-bold text-slate-700 dark:text-slate-200"></span> de <span x-text="images.length"></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Image Gallery Grid -->
+        <div 
+            :class="{
+                'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3': gridCols === 'compact',
+                'grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5': gridCols === 'comfortable'
+            }" 
+            class="grid transition-all duration-300"
+        >
+            <template x-for="(img, index) in filteredImages" :key="img.id">
+                <div class="group bg-white dark:bg-slate-900 rounded-xl overflow-hidden shadow-sm hover:shadow-md border border-slate-200 dark:border-slate-800 flex flex-col transition duration-200 relative">
+                    
+                    <!-- Uniform Thumbnail Container -->
+                    <div 
+                        @click="openLightbox(index)"
+                        :class="{
+                            'aspect-square': aspectRatio === 'square',
+                            'aspect-[4/3]': aspectRatio === 'landscape',
+                            'aspect-[3/4]': aspectRatio === 'portrait'
+                        }"
+                        class="w-full relative overflow-hidden bg-slate-100 dark:bg-slate-800 cursor-pointer"
+                    >
+                        <img 
+                            :src="img.url" 
+                            :alt="img.name" 
+                            class="uniform-img group-hover:scale-105 transition duration-300 ease-out" 
+                            loading="lazy"
+                            onerror="this.src='https://placehold.co/600x600/e2e8f0/64748b?text=Erro+Imagem'"
+                        >
+                        <!-- Hover Overlay -->
+                        <div class="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition duration-200 flex items-center justify-center space-x-2">
+                            <span class="p-2 bg-white/90 dark:bg-slate-900/90 rounded-full text-slate-800 dark:text-slate-100 hover:scale-110 transition shadow">
+                                <i data-lucide="maximize-2" class="w-4 h-4"></i>
+                            </span>
+                        </div>
+                    </div>
+
+                    <!-- Card Info & Direct Download -->
+                    <div class="p-3 flex items-center justify-between gap-2 border-t border-slate-100 dark:border-slate-800/80 bg-white dark:bg-slate-900">
+                        <div class="truncate">
+                            <p class="text-xs font-medium text-slate-800 dark:text-slate-200 truncate" :title="img.name" x-text="img.name"></p>
+                            <p class="text-[10px] text-slate-400" x-text="img.size || 'Aprox. 1.2 MB'"></p>
+                        </div>
+                        
+                        <!-- Individual Download Button -->
+                        <button 
+                            @click.stop="downloadSingleImage(img)" 
+                            class="p-2 text-slate-600 dark:text-slate-300 hover:text-brand-600 dark:hover:text-brand-400 hover:bg-brand-50 dark:hover:bg-slate-800 rounded-lg transition flex-shrink-0"
+                            title="Download Imagem"
+                        >
+                            <i data-lucide="download" class="w-4 h-4"></i>
+                        </button>
+                    </div>
+                </div>
+            </template>
+        </div>
+
+        <!-- Empty State -->
+        <div x-show="filteredImages.length === 0" class="text-center py-16 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800">
+            <div class="inline-flex p-4 bg-slate-100 dark:bg-slate-800 rounded-full text-slate-400 mb-3">
+                <i data-lucide="image-off" class="w-8 h-8"></i>
+            </div>
+            <h3 class="text-base font-semibold text-slate-700 dark:text-slate-200">Nenhuma imagem encontrada</h3>
+            <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">Tente mudar o termo da pesquisa ou faça o upload de novas imagens.</p>
+        </div>
+    </main>
+
+    <!-- Lightbox Modal -->
+    <div 
+        x-show="lightboxOpen" 
+        x-transition:enter="transition ease-out duration-200"
+        x-transition:enter-start="opacity-0"
+        x-transition:enter-end="opacity-100"
+        x-transition:leave="transition ease-in duration-150"
+        x-transition:leave-start="opacity-100"
+        x-transition:leave-end="opacity-0"
+        @keydown.window.escape="lightboxOpen = false"
+        @keydown.window.arrow-left="prevImage()"
+        @keydown.window.arrow-right="nextImage()"
+        class="fixed inset-0 z-50 bg-slate-950/95 backdrop-blur-md flex items-center justify-center p-4 sm:p-6"
+        style="display: none;"
+    >
+        <!-- Close Button -->
+        <button @click="lightboxOpen = false" class="absolute top-4 right-4 z-10 p-2.5 text-slate-300 hover:text-white bg-slate-800/60 hover:bg-slate-800 rounded-full transition">
+            <i data-lucide="x" class="w-6 h-6"></i>
+        </button>
+
+        <!-- Previous Button -->
+        <button @click="prevImage()" class="absolute left-4 top-1/2 -translate-y-1/2 z-10 p-3 text-slate-300 hover:text-white bg-slate-800/60 hover:bg-slate-800 rounded-full transition">
+            <i data-lucide="chevron-left" class="w-6 h-6"></i>
+        </button>
+
+        <!-- Next Button -->
+        <button @click="nextImage()" class="absolute right-4 top-1/2 -translate-y-1/2 z-10 p-3 text-slate-300 hover:text-white bg-slate-800/60 hover:bg-slate-800 rounded-full transition">
+            <i data-lucide="chevron-right" class="w-6 h-6"></i>
+        </button>
+
+        <!-- Lightbox Content Container -->
+        <div class="max-w-5xl max-h-full w-full flex flex-col items-center justify-center space-y-4">
+            
+            <template x-if="currentImage">
+                <div class="relative max-h-[80vh] flex items-center justify-center overflow-hidden rounded-lg shadow-2xl">
+                    <img 
+                        :src="currentImage.url" 
+                        :alt="currentImage.name" 
+                        class="max-h-[80vh] max-w-full object-contain rounded-lg"
+                    >
+                </div>
+            </template>
+
+            <!-- Lightbox Toolbar -->
+            <template x-if="currentImage">
+                <div class="flex items-center justify-between w-full max-w-2xl bg-slate-900/80 border border-slate-800 px-5 py-3 rounded-xl text-white text-sm">
+                    <div class="truncate mr-4">
+                        <p class="font-medium truncate" x-text="currentImage.name"></p>
+                        <p class="text-xs text-slate-400" x-text="`${currentImageIndex + 1} de ${filteredImages.length}`"></p>
+                    </div>
+
+                    <button 
+                        @click="downloadSingleImage(currentImage)" 
+                        class="px-4 py-2 bg-brand-600 hover:bg-brand-700 rounded-lg font-medium text-xs sm:text-sm flex items-center gap-2 transition flex-shrink-0"
+                    >
+                        <i data-lucide="download" class="w-4 h-4"></i>
+                        <span>Baixar Original</span>
+                    </button>
+                </div>
+            </template>
+        </div>
+    </div>
+
+    <!-- Instructions / Deployment Guide Modal -->
+    <div 
+        x-show="showDeployModal" 
+        x-transition 
+        class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4"
+        style="display: none;"
+    >
+        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-2xl w-full p-6 space-y-5 shadow-2xl max-h-[90vh] overflow-y-auto">
+            
+            <div class="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
+                <div class="flex items-center space-x-2 text-brand-600 dark:text-brand-400">
+                    <i data-lucide="rocket" class="w-6 h-6"></i>
+                    <h3 class="text-lg font-bold text-slate-900 dark:text-white">Como publicar seu site (Deploy Grátis)</h3>
+                </div>
+                <button @click="showDeployModal = false" class="text-slate-400 hover:text-slate-600">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <div class="space-y-4 text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
+                <p>
+                    Para enviar este site para a pessoa que vai baixar as fotos, você pode usá-lo com suas próprias fotos de duas formas:
+                </p>
+
+                <!-- Step 1 -->
+                <div class="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700/60 space-y-2">
+                    <h4 class="font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                        <span class="w-5 h-5 bg-brand-600 text-white rounded-full flex items-center justify-center text-xs">1</span>
+                        Opção 1: Netlify Drop / Vercel (Sem código)
+                    </h4>
+                    <ol class="list-disc list-inside text-xs space-y-1 pl-2 text-slate-500 dark:text-slate-400">
+                        <li>Salve este arquivo como <code class="bg-slate-200 dark:bg-slate-700 px-1 py-0.5 rounded text-slate-800 dark:text-slate-200">index.html</code>.</li>
+                        <li>Acesse o <a href="https://app.netlify.com/drop" target="_blank" class="text-brand-600 underline">Netlify Drop</a>.</li>
+                        <li>Arraste a pasta que contém o arquivo <code class="bg-slate-200 dark:bg-slate-700 px-1 py-0.5 rounded text-slate-800 dark:text-slate-200">index.html</code> para o site.</li>
+                        <li>Seu link público será gerado em instantes!</li>
+                    </ol>
+                </div>
+
+                <!-- Step 2 -->
+                <div class="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700/60 space-y-2">
+                    <h4 class="font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                        <span class="w-5 h-5 bg-brand-600 text-white rounded-full flex items-center justify-center text-xs">2</span>
+                        Opção 2: GitHub Pages
+                    </h4>
+                    <p class="text-xs text-slate-500 dark:text-slate-400">
+                        Crie um repositório no GitHub, faça o upload do arquivo <code class="bg-slate-200 dark:bg-slate-700 px-1 py-0.5 rounded text-slate-800 dark:text-slate-200">index.html</code> e ative o <strong>GitHub Pages</strong> nas configurações do repositório.
+                    </p>
+                </div>
+
+                <!-- Step 3 -->
+                <div class="bg-amber-50 dark:bg-amber-950/30 p-4 rounded-xl border border-amber-200 dark:border-amber-900/50 space-y-2">
+                    <h4 class="font-semibold text-amber-800 dark:text-amber-300 flex items-center gap-2">
+                        <i data-lucide="alert-circle" class="w-4 h-4"></i>
+                        Dica Importante para Fotos Estáticas
+                    </h4>
+                    <p class="text-xs text-amber-700 dark:text-amber-400">
+                        Quando você faz upload pela tela, as imagens ficam visíveis apenas no seu navegador. Se quiser que outras pessoas vejam as fotos automaticamente ao abrir o link enviado, coloque as imagens numa pasta chamada <code class="bg-amber-100 dark:bg-amber-900/60 px-1 py-0.5 rounded">images/</code> e substitua a lista inicial no código JavaScript do arquivo.
+                    </p>
+                </div>
+            </div>
+
+            <div class="flex justify-end pt-2">
+                <button @click="showDeployModal = false" class="px-5 py-2 text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded-lg transition">
+                    Entendi!
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Application Script -->
+    <script>
+        function galleryApp() {
+            return {
+                darkMode: true,
+                searchQuery: '',
+                gridCols: 'comfortable', // 'compact' | 'comfortable'
+                aspectRatio: 'square', // 'square' | 'landscape' | 'portrait'
+                isDragging: false,
+                isZipping: false,
+                lightboxOpen: false,
+                showDeployModal: false,
+                currentImageIndex: 0,
+
+                // Initial sample placeholder images
+                images: [
+                    { id: 1, name: 'paisagem_montanha.jpg', url: 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=800&q=80', size: '2.4 MB' },
+                    { id: 2, name: 'floresta_outono.jpg', url: 'https://images.unsplash.com/photo-1448375240586-882707db888b?auto=format&fit=crop&w=800&q=80', size: '1.8 MB' },
+                    { id: 3, name: 'arquitetura_urbana.jpg', url: 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=800&q=80', size: '3.1 MB' },
+                    { id: 4, name: 'praia_por_do_sol.jpg', url: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=800&q=80', size: '2.1 MB' },
+                    { id: 5, name: 'cafe_estudo.jpg', url: 'https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?auto=format&fit=crop&w=800&q=80', size: '1.5 MB' },
+                    { id: 6, name: 'noite_estrelada.jpg', url: 'https://images.unsplash.com/photo-1519681393784-d120267933ba?auto=format&fit=crop&w=800&q=80', size: '4.2 MB' },
+                    { id: 7, name: 'minimalismo_design.jpg', url: 'https://images.unsplash.com/photo-1494438639946-1ebd1d20bf85?auto=format&fit=crop&w=800&q=80', size: '1.2 MB' },
+                    { id: 8, name: 'textura_natureza.jpg', url: 'https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?auto=format&fit=crop&w=800&q=80', size: '2.9 MB' },
+                ],
+
+                // Filtered images based on search query
+                get filteredImages() {
+                    if (!this.searchQuery.trim()) {
+                        return this.images;
+                    }
+                    return this.images.filter(img => 
+                        img.name.toLowerCase().includes(this.searchQuery.toLowerCase())
+                    );
+                },
+
+                get currentImage() {
+                    return this.filteredImages[this.currentImageIndex] || null;
+                },
+
+                // Handle files selected via input
+                handleFileUpload(event) {
+                    const files = Array.from(event.target.files);
+                    this.processFiles(files);
+                },
+
+                // Handle folder drag and drop
+                handleFolderDrop(event) {
+                    this.isDragging = false;
+                    const items = event.dataTransfer.items;
+                    const files = [];
+
+                    if (items) {
+                        for (let i = 0; i < items.length; i++) {
+                            const item = items[i].webkitGetAsEntry();
+                            if (item) {
+                                this.traverseFileTree(item, files).then(() => {
+                                    this.processFiles(files);
+                                });
+                            }
+                        }
+                    } else {
+                        const droppedFiles = Array.from(event.dataTransfer.files);
+                        this.processFiles(droppedFiles);
+                    }
+                },
+
+                // Traverse folder structure recursively
+                traverseFileTree(item, fileList) {
+                    return new Promise((resolve) => {
+                        if (item.isFile) {
+                            item.file(file => {
+                                if (file.type.startsWith('image/')) {
+                                    fileList.push(file);
+                                }
+                                resolve();
+                            });
+                        } else if (item.isDirectory) {
+                            const dirReader = item.createReader();
+                            dirReader.readEntries(entries => {
+                                const promises = entries.map(entry => this.traverseFileTree(entry, fileList));
+                                Promise.all(promises).then(() => resolve());
+                            });
+                        }
+                    });
+                },
+
+                // Process uploaded files into previewable image objects
+                processFiles(files) {
+                    const imageFiles = files.filter(file => file.type.startsWith('image/'));
+                    if (imageFiles.length === 0) return;
+
+                    const newImages = imageFiles.map((file, idx) => ({
+                        id: Date.now() + idx + Math.random(),
+                        name: file.name,
+                        url: URL.createObjectURL(file),
+                        file: file,
+                        size: (file.size / (1024 * 1024)).toFixed(2) + ' MB'
+                    }));
+
+                    // Append new uploaded images
+                    this.images = [...newImages, ...this.images];
+                    this.$nextTick(() => lucide.createIcons());
+                },
+
+                // Download individual image
+                downloadSingleImage(image) {
+                    const link = document.createElement('a');
+                    link.href = image.url;
+                    link.download = image.name;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                },
+
+                // Download all filtered images as a single ZIP file
+                async downloadAllAsZip() {
+                    if (this.filteredImages.length === 0) return;
+
+                    this.isZipping = true;
+                    const zip = new JSZip();
+                    const folder = zip.folder("imagens_galeria");
+
+                    try {
+                        for (let img of this.filteredImages) {
+                            try {
+                                const response = await fetch(img.url);
+                                const blob = await response.blob();
+                                folder.file(img.name, blob);
+                            } catch (e) {
+                                console.error('Erro ao processar imagem para ZIP:', img.name, e);
+                            }
+                        }
+
+                        const content = await zip.generateAsync({ type: "blob" });
+                        const link = document.createElement('a');
+                        link.href = URL.createObjectURL(content);
+                        link.download = "galeria_fotos.zip";
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                    } catch (error) {
+                        alert('Ocorreu um erro ao gerar o arquivo ZIP.');
+                    } finally {
+                        this.isZipping = false;
+                    }
+                },
+
+                // Lightbox Navigation
+                openLightbox(index) {
+                    this.currentImageIndex = index;
+                    this.lightboxOpen = true;
+                    this.$nextTick(() => lucide.createIcons());
+                },
+
+                nextImage() {
+                    if (this.filteredImages.length === 0) return;
+                    this.currentImageIndex = (this.currentImageIndex + 1) % this.filteredImages.length;
+                },
+
+                prevImage() {
+                    if (this.filteredImages.length === 0) return;
+                    this.currentImageIndex = (this.currentImageIndex - 1 + this.filteredImages.length) % this.filteredImages.length;
+                },
+
+                init() {
+                    this.$nextTick(() => {
+                        lucide.createIcons();
+                    });
+                }
+            }
+        }
+    </script>
+</body>
+</html>
