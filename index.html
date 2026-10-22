@@ -234,7 +234,7 @@
                     <div class="p-3 flex items-center justify-between gap-2 border-t border-slate-100 dark:border-slate-800/80 bg-white dark:bg-slate-900">
                         <div class="truncate">
                             <p class="text-xs font-medium text-slate-800 dark:text-slate-200 truncate" :title="img.name" x-text="img.name"></p>
-                            <p class="text-[10px] text-slate-400" x-text="img.size || 'Aprox. 1.2 MB'"></p>
+                            <p class="text-[10px] text-slate-400" x-text="img.size || '2.0 MB'"></p>
                         </div>
                         
                         <!-- Individual Download Button -->
@@ -379,7 +379,7 @@
                         Dica Importante para Fotos Estáticas
                     </h4>
                     <p class="text-xs text-amber-700 dark:text-amber-400">
-                        Quando você faz upload pela tela, as imagens ficam visíveis apenas no seu navegador. Se quiser que outras pessoas vejam as fotos automaticamente ao abrir o link enviado, coloque as imagens numa pasta chamada <code class="bg-amber-100 dark:bg-amber-900/60 px-1 py-0.5 rounded">images/</code> e substitua a lista inicial no código JavaScript do arquivo.
+                        Quando você faz upload pela tela, as imagens ficam visíveis apenas no seu navegador. Se quiser que outras pessoas vejam as fotos automaticamente ao abrir o link enviado, coloque as imagens numa pasta chamada <code class="bg-amber-100 dark:bg-amber-900/60 px-1 py-0.5 rounded">imagens/</code> e substitua a lista inicial no código JavaScript do arquivo.
                     </p>
                 </div>
             </div>
@@ -406,17 +406,8 @@
                 showDeployModal: false,
                 currentImageIndex: 0,
 
-                // Initial sample placeholder images
-                images: [
-                    { id: 1, name: 'paisagem_montanha.jpg', url: 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=800&q=80', size: '2.4 MB' },
-                    { id: 2, name: 'floresta_outono.jpg', url: 'https://images.unsplash.com/photo-1448375240586-882707db888b?auto=format&fit=crop&w=800&q=80', size: '1.8 MB' },
-                    { id: 3, name: 'arquitetura_urbana.jpg', url: 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=800&q=80', size: '3.1 MB' },
-                    { id: 4, name: 'praia_por_do_sol.jpg', url: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=800&q=80', size: '2.1 MB' },
-                    { id: 5, name: 'cafe_estudo.jpg', url: 'https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?auto=format&fit=crop&w=800&q=80', size: '1.5 MB' },
-                    { id: 6, name: 'noite_estrelada.jpg', url: 'https://images.unsplash.com/photo-1519681393784-d120267933ba?auto=format&fit=crop&w=800&q=80', size: '4.2 MB' },
-                    { id: 7, name: 'minimalismo_design.jpg', url: 'https://images.unsplash.com/photo-1494438639946-1ebd1d20bf85?auto=format&fit=crop&w=800&q=80', size: '1.2 MB' },
-                    { id: 8, name: 'textura_natureza.jpg', url: 'https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?auto=format&fit=crop&w=800&q=80', size: '2.9 MB' },
-                ],
+                // Lista de imagens preenchida automaticamente por loop
+                images: [],
 
                 // Filtered images based on search query
                 get filteredImages() {
@@ -558,6 +549,21 @@
                 },
 
                 init() {
+                    // Loop automático para carregar imagem001.jpg até imagem010.jpg
+                    const totalImagens = 10;
+
+                    for (let i = 1; i <= totalImagens; i++) {
+                        const numeroFormatado = String(i).padStart(3, '0'); // Ex: 1 vira "001"
+                        const nomeArquivo = `imagem${numeroFormatado}.jpg`;
+
+                        this.images.push({
+                            id: i,
+                            name: nomeArquivo,
+                            url: `imagens/${nomeArquivo}`,
+                            size: '2.0 MB'
+                        });
+                    }
+
                     this.$nextTick(() => {
                         lucide.createIcons();
                     });
